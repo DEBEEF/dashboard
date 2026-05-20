@@ -112,7 +112,7 @@ app.get('/api/overview', async (_req, res) => {
         entityType: 'SysTicket',
         page: 1,
         pageSize: 1000,
-        columns: ['BaseEntityStatus', 'EntityType'],
+        columns: ['BaseEntityStatus'],
       }),
       nspCall('api/publicapi/getentitylistbyquery', {
         entityType: 'SysTicket',
@@ -135,7 +135,7 @@ app.get('/api/overview', async (_req, res) => {
     for (const row of statusBuckets.Data || []) {
       const s = row.BaseEntityStatus || 'Unknown';
       byStatus[s] = (byStatus[s] || 0) + 1;
-      const t = row.EntityType || 'Unknown';
+      const t = row.EntityType || row.EntityTypeId || 'Unknown';
       byType[t] = (byType[t] || 0) + 1;
     }
 

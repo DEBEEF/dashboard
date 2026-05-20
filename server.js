@@ -100,7 +100,22 @@ app.post('/api/nsp/*', async (req, res) => {
   }
 });
 
-const CLOSED_STATUS_NAMES = ['Closed', 'Resolved', 'Cancelled', 'Canceled', 'Released', 'Rejected'];
+const CLOSED_STATUS_NAMES = ['Closed', 'Resolved', 'Cancelled', 'Canceled', 'Released', 'Rejected', 'Completed', 'Done'];
+
+let statusCache = null; // { ids: number[], byId: Map<id, name>, expiresAt }
+async function getClosedStatusIds() {
+  if (statusCache && statusCache.expiresAt > Date.now()) return statusCache;
+  const data = await nspCall('api/publicapi/getentitylistbyquery', {
+    entityType: 'SysEntityStatus',
+    columns: ['Id', 'Name'],
+  });
+  const all = data.Data || [];
+  const lower = new Set(CLOSED_STATUS_NAMES.map(n => n.toLowerCase()));
+  const ids = all.filter(r => lower.has(String(r.Name || '').toLowerCase())).map(r => r.Id);
+  statusCache = { ids, all, expiresAt: Date.now() + 10 * 60_000 };
+  console.log('[nsp-proxy] closed status ids:', ids, '(of', all.length, 'total statuses)');
+  return statusCache;
+}
 
 async function countWhere(filters) {
   const data = await nspCall('api/publicapi/getentitylistbyquery', {
@@ -119,19 +134,20 @@ app.get('/api/overview', async (_req, res) => {
     since.setDate(since.getDate() - 29);
     const sinceIso = since.toISOString().slice(0, 10) + 'T00:00:00Z';
 
-    const closedFilter = {
+    const { ids: closedIds } = await getClosedStatusIds();
+    const closedFilter = closedIds.length ? {
       logic: 'or',
-      filters: CLOSED_STATUS_NAMES.map(v => ({ field: 'BaseEntityStatus', operator: 'eq', value: v })),
-    };
-    const openFilter = {
+      filters: closedIds.map(id => ({ field: 'BaseEntityStatus.Id', operator: 'eq', value: id })),
+    } : null;
+    const openFilter = closedIds.length ? {
       logic: 'and',
-      filters: CLOSED_STATUS_NAMES.map(v => ({ field: 'BaseEntityStatus', operator: 'neq', value: v })),
-    };
+      filters: closedIds.map(id => ({ field: 'BaseEntityStatus.Id', operator: 'neq', value: id })),
+    } : null;
 
     const [total, closed, open, last30, statusSample, trendSample] = await Promise.all([
       countWhere(null),
-      countWhere(closedFilter),
-      countWhere(openFilter),
+      closedFilter ? countWhere(closedFilter) : Promise.resolve(0),
+      openFilter ? countWhere(openFilter) : Promise.resolve(0),
       countWhere({ field: 'CreatedDate', operator: 'gte', value: sinceIso }),
       // Larger sample purely for the status donut breakdown
       nspCall('api/publicapi/getentitylistbyquery', {

@@ -102,20 +102,34 @@ app.post('/api/nsp/*', async (req, res) => {
 
 const CLOSED_STATUS_NAMES = ['Closed', 'Resolved', 'Cancelled', 'Canceled', 'Released', 'Rejected', 'Completed', 'Done'];
 
-let statusCache = null; // { ids: number[], byId: Map<id, name>, expiresAt }
+let statusCache = null; // { ids, nameById, expiresAt }
 async function getClosedStatusIds() {
   if (statusCache && statusCache.expiresAt > Date.now()) return statusCache;
+  // Sample tickets to learn the name<->id mapping; each row carries both
+  // BaseEntityStatus (name) and BaseEntityStatus.Id (int).
   const data = await nspCall('api/publicapi/getentitylistbyquery', {
-    entityType: 'SysEntityStatus',
+    entityType: 'SysTicket',
+    page: 1,
+    pageSize: 5000,
+    columns: ['BaseEntityStatus'],
   });
-  const all = data.Data || [];
+  const nameById = new Map();
+  for (const row of data.Data || []) {
+    const id = row['BaseEntityStatus.Id'];
+    const name = row['BaseEntityStatus'];
+    if (id != null && name) nameById.set(id, name);
+  }
   const lower = new Set(CLOSED_STATUS_NAMES.map(n => n.toLowerCase()));
-  // SysEntityStatus name field varies between NSP installs - try common variants
-  const nameOf = r => r.StatusName ?? r.DisplayName ?? r.Title ?? r.Label ?? r.Name ?? r.NameKey ?? '';
-  const ids = all.filter(r => lower.has(String(nameOf(r)).toLowerCase())).map(r => r.Id);
-  statusCache = { ids, all, expiresAt: Date.now() + 10 * 60_000 };
-  if (all[0]) console.log('[nsp-proxy] SysEntityStatus example row fields:', Object.keys(all[0]).join(', '));
-  console.log('[nsp-proxy] closed status ids:', ids, '(of', all.length, 'total statuses)');
+  const ids = [...nameById.entries()]
+    .filter(([, name]) => lower.has(String(name).toLowerCase()))
+    .map(([id]) => id);
+  statusCache = {
+    ids,
+    nameById: Object.fromEntries(nameById),
+    expiresAt: Date.now() + 10 * 60_000,
+  };
+  console.log('[nsp-proxy] discovered statuses:', Object.fromEntries(nameById));
+  console.log('[nsp-proxy] closed status ids:', ids);
   return statusCache;
 }
 
@@ -204,7 +218,7 @@ app.get('/api/debug/statuses', async (_req, res) => {
   try {
     statusCache = null;
     const cache = await getClosedStatusIds();
-    res.json({ closedIds: cache.ids, all: cache.all });
+    res.json({ closedIds: cache.ids, nameById: cache.nameById });
   } catch (e) {
     res.status(e.status || 502).json({ error: e.message, body: e.body ?? null });
   }

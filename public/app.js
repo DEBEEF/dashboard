@@ -62,6 +62,22 @@ async function loadOverview() {
     legend: { position: 'bottom' },
     dataLabels: { enabled: false },
   }).render();
+
+  const groupEntries = Object.entries(data.byAgentGroup || {}).sort((a, b) => b[1] - a[1]);
+  new ApexCharts(document.getElementById('chart-agentgroup'), {
+    chart: { type: 'bar', height: Math.max(260, 28 * groupEntries.length + 80), toolbar: { show: false } },
+    series: [{ name: 'Tickets', data: groupEntries.map(([, v]) => v) }],
+    xaxis: { categories: groupEntries.map(([k]) => k) },
+    plotOptions: { bar: { horizontal: true, borderRadius: 4, dataLabels: { position: 'top' } } },
+    dataLabels: {
+      enabled: true,
+      offsetX: 30,
+      style: { colors: ['#444'] },
+      formatter: v => v.toLocaleString(),
+    },
+    colors: ['#206bc4'],
+    grid: { strokeDashArray: 4 },
+  }).render();
 }
 
 loadHealth();

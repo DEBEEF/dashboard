@@ -165,12 +165,12 @@ app.get('/api/overview', async (_req, res) => {
       closedFilter ? countWhere(closedFilter) : Promise.resolve(0),
       openFilter ? countWhere(openFilter) : Promise.resolve(0),
       countWhere({ field: 'CreatedDate', operator: 'gte', value: sinceIso }),
-      // Larger sample purely for the status donut breakdown
+      // Larger sample purely for the status + agent-group breakdown
       nspCall('api/publicapi/getentitylistbyquery', {
         entityType: 'SysTicket',
         page: 1,
         pageSize: 5000,
-        columns: ['BaseEntityStatus'],
+        columns: ['BaseEntityStatus', 'AgentGroup'],
         sorts: [{ field: 'CreatedDate', dir: 'desc' }],
       }),
       // Trend: last 30 days of CreatedDate
@@ -185,9 +185,12 @@ app.get('/api/overview', async (_req, res) => {
     ]);
 
     const byStatus = {};
+    const byAgentGroup = {};
     for (const row of statusSample.Data || []) {
       const s = row.BaseEntityStatus || 'Unknown';
       byStatus[s] = (byStatus[s] || 0) + 1;
+      const g = row.AgentGroup || 'Unassigned';
+      byAgentGroup[g] = (byAgentGroup[g] || 0) + 1;
     }
 
     const trend = {};
@@ -207,6 +210,7 @@ app.get('/api/overview', async (_req, res) => {
       closed,
       last30Days: last30,
       byStatus,
+      byAgentGroup,
       trend,
     });
   } catch (e) {

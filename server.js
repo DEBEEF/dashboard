@@ -187,8 +187,11 @@ app.get('/api/overview', async (_req, res) => {
     // Known status IDs whose names NSP doesn't return on this install
     const STATUS_ID_OVERRIDES = {
       25: 'Waiting',
+      26: 'Reopened',
       27: 'Awaiting decision',
     };
+    // Status IDs to treat as "Closed" even if NSP names them differently
+    const CLOSED_STATUS_IDS = new Set([29]);
 
     // First pass: build id -> name map from rows where NSP did resolve the name
     const idToName = { ...STATUS_ID_OVERRIDES };
@@ -208,11 +211,12 @@ app.get('/api/overview', async (_req, res) => {
     };
 
     const byStatus = {};
-    const byAgentGroup = {}; // { group: { statusName: count } } - excludes "Closed"
+    const byAgentGroup = {}; // { group: { statusName: count } } - excludes closed statuses
     for (const row of statusSample.Data || []) {
       const s = labelFor(row);
       byStatus[s] = (byStatus[s] || 0) + 1;
-      if (s.toLowerCase() === 'closed') continue;
+      const id = row['BaseEntityStatus.Id'];
+      if (s.toLowerCase() === 'closed' || CLOSED_STATUS_IDS.has(id)) continue;
       const g = row.AgentGroup || 'Unassigned';
       const bucket = byAgentGroup[g] || (byAgentGroup[g] = {});
       bucket[s] = (bucket[s] || 0) + 1;

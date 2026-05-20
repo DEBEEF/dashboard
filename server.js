@@ -243,6 +243,26 @@ app.get('/api/overview', async (_req, res) => {
   }
 });
 
+// View raw tickets for a given BaseEntityStatus.Id:
+//   GET /api/debug/by-status/26       -> first 5 tickets with that status id
+//   GET /api/debug/by-status/26?limit=20
+app.get('/api/debug/by-status/:id', async (req, res) => {
+  const id = Number(req.params.id);
+  const limit = Math.min(Number(req.query.limit) || 5, 100);
+  try {
+    const data = await nspCall('api/publicapi/getentitylistbyquery', {
+      entityType: 'SysTicket',
+      page: 1,
+      pageSize: limit,
+      filters: { field: 'BaseEntityStatus', operator: 'eq', value: id },
+      sorts: [{ field: 'CreatedDate', dir: 'desc' }],
+    });
+    res.json({ id, total: data.Total, sample: data.Data });
+  } catch (e) {
+    res.status(e.status || 502).json({ error: e.message, body: e.body ?? null });
+  }
+});
+
 app.get('/api/debug/unknown', async (_req, res) => {
   try {
     const data = await nspCall('api/publicapi/getentitylistbyquery', {

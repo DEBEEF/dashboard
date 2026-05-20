@@ -226,7 +226,7 @@ app.get('/api/debug/unknown', async (_req, res) => {
       entityType: 'SysTicket',
       page: 1,
       pageSize: 5000,
-      columns: ['ReferenceNo', 'BaseEntityStatus', 'AgentGroup', 'EntityType', 'CreatedDate'],
+      columns: ['ReferenceNo', 'BaseEntityStatus', 'AgentGroup', 'CreatedDate'],
       sorts: [{ field: 'CreatedDate', dir: 'desc' }],
     });
     const unknowns = (data.Data || []).filter(r => !r.BaseEntityStatus);

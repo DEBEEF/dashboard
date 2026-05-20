@@ -5,12 +5,15 @@ async function loadHealth() {
   const badge = document.getElementById('health');
   try {
     const r = await fetch('/api/health').then(r => r.json());
-    if (r.nspConfigured) {
+    if (!r.nspConfigured) {
+      badge.className = 'badge bg-yellow-lt align-self-center';
+      badge.textContent = 'NSP not configured (.env)';
+    } else if (r.tokenOk) {
       badge.className = 'badge bg-green-lt align-self-center';
       badge.textContent = 'NSP connected';
     } else {
-      badge.className = 'badge bg-yellow-lt align-self-center';
-      badge.textContent = 'NSP not configured (.env)';
+      badge.className = 'badge bg-red-lt align-self-center';
+      badge.textContent = 'auth failed';
     }
   } catch {
     badge.className = 'badge bg-red-lt align-self-center';

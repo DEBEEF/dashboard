@@ -24,8 +24,10 @@ Open http://localhost:3000.
   - `GET /api/health` - reports whether the proxy is configured.
 - `public/` - Tabler (CDN) + ApexCharts. No build step.
 
-## Auth header
+## Auth
 
-By default the proxy sends `Authorization: Bearer <token>`. Override with
-`NSP_AUTH_HEADER` / `NSP_AUTH_SCHEME` in `.env` if your NSP build expects a
-different header (some installations use a custom header instead of Bearer).
+On the first request the proxy calls
+`POST /api/logon/getauthenticationtoken?email=…&password=…`, caches the returned
+token until ~1 minute before `Expires`, and sends it on every subsequent NSP
+call as `Authentication: Bearer <token>`. A 401 response invalidates the cache
+and the request is retried once.

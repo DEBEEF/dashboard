@@ -166,7 +166,15 @@ app.get('/api/overview', async (_req, res) => {
       filters: allClosedIds.map(id => ({ field: 'BaseEntityStatus', operator: 'eq', value: id })),
     } : null;
 
-    const [total, closed, open, last30, statusSample, trendSample, closedSample] = await Promise.all([
+    const weekAgo = new Date();
+    weekAgo.setDate(weekAgo.getDate() - 6);
+    weekAgo.setHours(0, 0, 0, 0);
+    const weekAgoIso = weekAgo.toISOString();
+    const closedLastWeekFilter = closedSampleFilter
+      ? { logic: 'and', filters: [closedSampleFilter, { field: 'CloseDateTime', operator: 'gte', value: weekAgoIso }] }
+      : null;
+
+    const [total, closed, open, last30, statusSample, trendSample, closedSample, closedWeekSample] = await Promise.all([
       countWhere(null),
       closedFilter ? countWhere(closedFilter) : Promise.resolve(0),
       openFilter ? countWhere(openFilter) : Promise.resolve(0),
@@ -196,6 +204,15 @@ app.get('/api/overview', async (_req, res) => {
         columns: ['CreatedDate', 'CloseDateTime', 'AgentGroup'],
         sorts: [{ field: 'CloseDateTime', dir: 'desc' }],
         filters: closedSampleFilter,
+      }) : Promise.resolve({ Data: [] }),
+      // Closed in the last 7 days for the per-day breakdown
+      closedLastWeekFilter ? nspCall('api/publicapi/getentitylistbyquery', {
+        entityType: 'SysTicket',
+        page: 1,
+        pageSize: 10000,
+        columns: ['CreatedDate', 'CloseDateTime'],
+        sorts: [{ field: 'CloseDateTime', dir: 'desc' }],
+        filters: closedLastWeekFilter,
       }) : Promise.resolve({ Data: [] }),
     ]);
 
@@ -266,6 +283,30 @@ app.get('/api/overview', async (_req, res) => {
       Object.entries(closeAggregate).map(([g, v]) => [g, v.totalMs / v.count / 3_600_000])
     );
 
+    // Per-day breakdown of tickets closed in the last 7 days
+    const closedByDay = {}; // 'YYYY-MM-DD' -> { count, totalMs }
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(weekAgo);
+      d.setDate(weekAgo.getDate() + i);
+      closedByDay[d.toISOString().slice(0, 10)] = { count: 0, totalMs: 0 };
+    }
+    for (const row of closedWeekSample.Data || []) {
+      if (!row.CreatedDate || !row.CloseDateTime) continue;
+      const day = row.CloseDateTime.slice(0, 10);
+      if (!(day in closedByDay)) continue;
+      const ms = new Date(row.CloseDateTime) - new Date(row.CreatedDate);
+      if (!Number.isFinite(ms) || ms <= 0) continue;
+      closedByDay[day].count += 1;
+      closedByDay[day].totalMs += ms;
+    }
+    const closedLastWeek = Object.entries(closedByDay)
+      .sort((a, b) => b[0].localeCompare(a[0]))
+      .map(([day, v]) => ({
+        day,
+        count: v.count,
+        avgHours: v.count ? v.totalMs / v.count / 3_600_000 : null,
+      }));
+
     res.json({
       total,
       open,
@@ -274,6 +315,7 @@ app.get('/api/overview', async (_req, res) => {
       byStatus,
       byAgentGroup,
       avgCloseHoursByGroup,
+      closedLastWeek,
       trend,
     });
   } catch (e) {

@@ -81,7 +81,15 @@
                 <h3 class="card-title">Tickets per agent group, by status (excl. Closed)</h3>
                 <div class="text-muted small ms-auto">last 5,000 tickets</div>
               </div>
-              <div class="card-body"><div id="chart-agentgroup"></div></div>
+              <div class="card-body">
+                <div id="chart-agentgroup"></div>
+                <div class="table-responsive mt-3">
+                  <table class="table table-vcenter table-sm card-table">
+                    <thead><tr><th>Agent group</th><th class="text-end">Open tickets</th><th class="text-end">Avg close time</th></tr></thead>
+                    <tbody id="agentgroup-stats"></tbody>
+                  </table>
+                </div>
+              </div>
             </div>
           </div>
 

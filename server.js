@@ -160,7 +160,13 @@ app.get('/api/overview', async (_req, res) => {
       filters: closedIds.map(id => ({ field: 'BaseEntityStatus', operator: 'neq', value: id })),
     } : null;
 
-    const [total, closed, open, last30, statusSample, trendSample] = await Promise.all([
+    const allClosedIds = [...new Set([...closedIds, 29])];
+    const closedSampleFilter = allClosedIds.length ? {
+      logic: 'or',
+      filters: allClosedIds.map(id => ({ field: 'BaseEntityStatus', operator: 'eq', value: id })),
+    } : null;
+
+    const [total, closed, open, last30, statusSample, trendSample, closedSample] = await Promise.all([
       countWhere(null),
       closedFilter ? countWhere(closedFilter) : Promise.resolve(0),
       openFilter ? countWhere(openFilter) : Promise.resolve(0),
@@ -182,6 +188,15 @@ app.get('/api/overview', async (_req, res) => {
         sorts: [{ field: 'CreatedDate', dir: 'asc' }],
         filters: { field: 'CreatedDate', operator: 'gte', value: sinceIso },
       }),
+      // Recent closed tickets to compute average close time per group
+      closedSampleFilter ? nspCall('api/publicapi/getentitylistbyquery', {
+        entityType: 'SysTicket',
+        page: 1,
+        pageSize: 5000,
+        columns: ['CreatedDate', 'CloseDateTime', 'AgentGroup'],
+        sorts: [{ field: 'CloseDateTime', dir: 'desc' }],
+        filters: closedSampleFilter,
+      }) : Promise.resolve({ Data: [] }),
     ]);
 
     // Known status IDs whose names NSP doesn't return on this install
@@ -236,6 +251,21 @@ app.get('/api/overview', async (_req, res) => {
       if (day in trend) trend[day] += 1;
     }
 
+    // Average close time per agent group (in hours), from the last N closed tickets.
+    const closeAggregate = {}; // group -> { totalMs, count }
+    for (const row of closedSample.Data || []) {
+      if (!row.CreatedDate || !row.CloseDateTime) continue;
+      const ms = new Date(row.CloseDateTime) - new Date(row.CreatedDate);
+      if (!Number.isFinite(ms) || ms <= 0) continue;
+      const g = row.AgentGroup || 'Unassigned';
+      const bucket = closeAggregate[g] || (closeAggregate[g] = { totalMs: 0, count: 0 });
+      bucket.totalMs += ms;
+      bucket.count += 1;
+    }
+    const avgCloseHoursByGroup = Object.fromEntries(
+      Object.entries(closeAggregate).map(([g, v]) => [g, v.totalMs / v.count / 3_600_000])
+    );
+
     res.json({
       total,
       open,
@@ -243,6 +273,7 @@ app.get('/api/overview', async (_req, res) => {
       last30Days: last30,
       byStatus,
       byAgentGroup,
+      avgCloseHoursByGroup,
       trend,
     });
   } catch (e) {

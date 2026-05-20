@@ -91,6 +91,29 @@ async function loadOverview() {
     legend: { position: 'top' },
     grid: { strokeDashArray: 4 },
   }).render();
+
+  const tbody = document.getElementById('agentgroup-stats');
+  const avg = data.avgCloseHoursByGroup || {};
+  tbody.innerHTML = groups.map(g => `
+    <tr>
+      <td>${escapeHtml(g.name)}</td>
+      <td class="text-end">${g.total.toLocaleString()}</td>
+      <td class="text-end text-muted">${formatHours(avg[g.name])}</td>
+    </tr>
+  `).join('');
+}
+
+function formatHours(h) {
+  if (h == null || !Number.isFinite(h)) return '—';
+  if (h < 1) return `${Math.round(h * 60)}m`;
+  if (h < 48) return `${h.toFixed(1)}h`;
+  const days = h / 24;
+  if (days < 60) return `${days.toFixed(1)}d`;
+  return `${(days / 30.44).toFixed(1)}mo`;
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
 loadHealth();

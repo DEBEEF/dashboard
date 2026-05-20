@@ -100,43 +100,62 @@ app.post('/api/nsp/*', async (req, res) => {
   }
 });
 
-// Overview aggregates - keeps NSP query shapes server-side, returns only summary numbers.
+const CLOSED_STATUS_NAMES = ['Closed', 'Resolved', 'Cancelled', 'Canceled', 'Released', 'Rejected'];
+
+async function countWhere(filters) {
+  const data = await nspCall('api/publicapi/getentitylistbyquery', {
+    entityType: 'SysTicket',
+    page: 1,
+    pageSize: 1,
+    columns: ['Id'],
+    ...(filters ? { filters } : {}),
+  });
+  return data.Total ?? 0;
+}
+
 app.get('/api/overview', async (_req, res) => {
   try {
     const since = new Date();
     since.setDate(since.getDate() - 29);
     const sinceIso = since.toISOString().slice(0, 10) + 'T00:00:00Z';
 
-    const [statusBuckets, recent, all] = await Promise.all([
-      nspCall('api/publicapi/getentitylistbyquery', {
-        entityType: 'SysTicket',
-        page: 1,
-        pageSize: 1000,
-        columns: ['BaseEntityStatus'],
-      }),
+    const closedFilter = {
+      logic: 'or',
+      filters: CLOSED_STATUS_NAMES.map(v => ({ field: 'BaseEntityStatus', operator: 'eq', value: v })),
+    };
+    const openFilter = {
+      logic: 'and',
+      filters: CLOSED_STATUS_NAMES.map(v => ({ field: 'BaseEntityStatus', operator: 'neq', value: v })),
+    };
+
+    const [total, closed, open, last30, statusSample, trendSample] = await Promise.all([
+      countWhere(null),
+      countWhere(closedFilter),
+      countWhere(openFilter),
+      countWhere({ field: 'CreatedDate', operator: 'gte', value: sinceIso }),
+      // Larger sample purely for the status donut breakdown
       nspCall('api/publicapi/getentitylistbyquery', {
         entityType: 'SysTicket',
         page: 1,
         pageSize: 5000,
+        columns: ['BaseEntityStatus'],
+        sorts: [{ field: 'CreatedDate', dir: 'desc' }],
+      }),
+      // Trend: last 30 days of CreatedDate
+      nspCall('api/publicapi/getentitylistbyquery', {
+        entityType: 'SysTicket',
+        page: 1,
+        pageSize: 10000,
         columns: ['CreatedDate'],
         sorts: [{ field: 'CreatedDate', dir: 'asc' }],
         filters: { field: 'CreatedDate', operator: 'gte', value: sinceIso },
       }),
-      nspCall('api/publicapi/getentitylistbyquery', {
-        entityType: 'SysTicket',
-        page: 1,
-        pageSize: 1,
-        columns: ['Id'],
-      }),
     ]);
 
     const byStatus = {};
-    const byType = {};
-    for (const row of statusBuckets.Data || []) {
+    for (const row of statusSample.Data || []) {
       const s = row.BaseEntityStatus || 'Unknown';
       byStatus[s] = (byStatus[s] || 0) + 1;
-      const t = row.EntityType || row.EntityTypeId || 'Unknown';
-      byType[t] = (byType[t] || 0) + 1;
     }
 
     const trend = {};
@@ -145,16 +164,17 @@ app.get('/api/overview', async (_req, res) => {
       d.setDate(since.getDate() + i);
       trend[d.toISOString().slice(0, 10)] = 0;
     }
-    for (const row of recent.Data || []) {
+    for (const row of trendSample.Data || []) {
       const day = (row.CreatedDate || '').slice(0, 10);
       if (day in trend) trend[day] += 1;
     }
 
     res.json({
-      total: all.Total ?? (statusBuckets.Total ?? 0),
-      sampleSize: (statusBuckets.Data || []).length,
+      total,
+      open,
+      closed,
+      last30Days: last30,
       byStatus,
-      byType,
       trend,
     });
   } catch (e) {

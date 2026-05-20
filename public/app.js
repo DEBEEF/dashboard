@@ -1,6 +1,3 @@
-const OPEN_STATUSES = new Set(['New', 'Open', 'Assigned', 'In Progress', 'Active', 'Reopened']);
-const CLOSED_STATUSES = new Set(['Closed', 'Resolved', 'Cancelled', 'Canceled', 'Released']);
-
 async function loadHealth() {
   const badge = document.getElementById('health');
   try {
@@ -38,20 +35,13 @@ async function loadOverview() {
     return;
   }
 
-  document.getElementById('stat-total').textContent = data.total ?? '0';
-
-  let open = 0, closed = 0;
-  for (const [name, count] of Object.entries(data.byStatus || {})) {
-    if (CLOSED_STATUSES.has(name)) closed += count;
-    else if (OPEN_STATUSES.has(name)) open += count;
-  }
-  document.getElementById('stat-open').textContent = open;
-  document.getElementById('stat-closed').textContent = closed;
+  document.getElementById('stat-total').textContent = (data.total ?? 0).toLocaleString();
+  document.getElementById('stat-open').textContent = (data.open ?? 0).toLocaleString();
+  document.getElementById('stat-closed').textContent = (data.closed ?? 0).toLocaleString();
+  document.getElementById('stat-recent').textContent = (data.last30Days ?? 0).toLocaleString();
 
   const trend = data.trend || {};
   const trendDays = Object.keys(trend).sort();
-  const recentTotal = trendDays.reduce((s, d) => s + trend[d], 0);
-  document.getElementById('stat-recent').textContent = recentTotal;
 
   new ApexCharts(document.getElementById('chart-trend'), {
     chart: { type: 'area', height: 260, toolbar: { show: false }, animations: { enabled: false } },
@@ -71,16 +61,6 @@ async function loadOverview() {
     labels: statusEntries.map(([k]) => k),
     legend: { position: 'bottom' },
     dataLabels: { enabled: false },
-  }).render();
-
-  const typeEntries = Object.entries(data.byType || {}).sort((a, b) => b[1] - a[1]);
-  new ApexCharts(document.getElementById('chart-type'), {
-    chart: { type: 'bar', height: 260, toolbar: { show: false } },
-    series: [{ name: 'Count', data: typeEntries.map(([, v]) => v) }],
-    xaxis: { categories: typeEntries.map(([k]) => k) },
-    colors: ['#4299e1'],
-    dataLabels: { enabled: true },
-    plotOptions: { bar: { borderRadius: 4, horizontal: false } },
   }).render();
 }
 

@@ -65,7 +65,7 @@ async function nspCall(pathname, body, { retry = true } = {}) {
     headers: {
       'Content-Type': 'application/json',
       Accept: 'application/json',
-      Authentication: `Bearer ${token}`,
+      Authorization: `Bearer ${token}`,
     },
     body: JSON.stringify(body ?? {}),
   });

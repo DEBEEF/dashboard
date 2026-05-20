@@ -220,6 +220,22 @@ app.get('/api/overview', async (_req, res) => {
   }
 });
 
+app.get('/api/debug/unknown', async (_req, res) => {
+  try {
+    const data = await nspCall('api/publicapi/getentitylistbyquery', {
+      entityType: 'SysTicket',
+      page: 1,
+      pageSize: 5000,
+      columns: ['ReferenceNo', 'BaseEntityStatus', 'AgentGroup', 'EntityType', 'CreatedDate'],
+      sorts: [{ field: 'CreatedDate', dir: 'desc' }],
+    });
+    const unknowns = (data.Data || []).filter(r => !r.BaseEntityStatus);
+    res.json({ count: unknowns.length, sample: unknowns.slice(0, 10) });
+  } catch (e) {
+    res.status(e.status || 502).json({ error: e.message, body: e.body ?? null });
+  }
+});
+
 app.get('/api/debug/statuses', async (_req, res) => {
   try {
     statusCache = null;

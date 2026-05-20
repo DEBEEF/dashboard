@@ -92,19 +92,7 @@ async function loadOverview() {
     grid: { strokeDashArray: 4 },
   }).render();
 
-  const week = data.closedLastWeek || [];
-  const todayStr = new Date().toISOString().slice(0, 10);
-  const yesterdayStr = (() => { const d = new Date(); d.setDate(d.getDate() - 1); return d.toISOString().slice(0, 10); })();
-  document.getElementById('closed-week').innerHTML = week.map(d => {
-    const label = d.day === todayStr ? 'Today' : d.day === yesterdayStr ? 'Yesterday' : d.day;
-    return `
-      <tr>
-        <td>${label}</td>
-        <td class="text-end">${d.count.toLocaleString()}</td>
-        <td class="text-end text-muted">${formatHours(d.avgHours)}</td>
-      </tr>
-    `;
-  }).join('');
+  renderClosedWeek(data.closedLastWeek || { days: [], groups: [], counts: {} });
 
   const tbody = document.getElementById('agentgroup-stats');
   const avg = data.avgCloseHoursByGroup || {};
@@ -115,6 +103,26 @@ async function loadOverview() {
       <td class="text-end text-muted">${formatHours(avg[g.name])}</td>
     </tr>
   `).join('');
+}
+
+function renderClosedWeek({ days, groups, counts }) {
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const yesterdayStr = (() => { const d = new Date(); d.setDate(d.getDate() - 1); return d.toISOString().slice(0, 10); })();
+  const dayLabel = d => d === todayStr ? 'Today' : d === yesterdayStr ? 'Yesterday' : d;
+
+  const header = `<thead><tr><th>Day</th>${groups.map(g => `<th class="text-end">${escapeHtml(g)}</th>`).join('')}<th class="text-end">Total</th></tr></thead>`;
+  const rows = days.map(d => {
+    const dayCounts = counts[d] || {};
+    const total = groups.reduce((s, g) => s + (dayCounts[g] || 0), 0);
+    return `
+      <tr>
+        <td>${dayLabel(d)}</td>
+        ${groups.map(g => `<td class="text-end ${dayCounts[g] ? '' : 'text-muted'}">${(dayCounts[g] || 0).toLocaleString()}</td>`).join('')}
+        <td class="text-end fw-bold">${total.toLocaleString()}</td>
+      </tr>
+    `;
+  }).join('');
+  document.getElementById('closed-week-table').innerHTML = header + `<tbody>${rows}</tbody>`;
 }
 
 function formatHours(h) {

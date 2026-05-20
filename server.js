@@ -210,7 +210,7 @@ app.get('/api/overview', async (_req, res) => {
         entityType: 'SysTicket',
         page: 1,
         pageSize: 10000,
-        columns: ['CreatedDate', 'CloseDateTime'],
+        columns: ['CloseDateTime', 'AgentGroup'],
         sorts: [{ field: 'CloseDateTime', dir: 'desc' }],
         filters: closedLastWeekFilter,
       }) : Promise.resolve({ Data: [] }),
@@ -283,29 +283,29 @@ app.get('/api/overview', async (_req, res) => {
       Object.entries(closeAggregate).map(([g, v]) => [g, v.totalMs / v.count / 3_600_000])
     );
 
-    // Per-day breakdown of tickets closed in the last 7 days
-    const closedByDay = {}; // 'YYYY-MM-DD' -> { count, totalMs }
+    // Per-day, per-group breakdown of tickets closed in the last 7 days
+    const days = [];
     for (let i = 0; i < 7; i++) {
       const d = new Date(weekAgo);
       d.setDate(weekAgo.getDate() + i);
-      closedByDay[d.toISOString().slice(0, 10)] = { count: 0, totalMs: 0 };
+      days.push(d.toISOString().slice(0, 10));
     }
+    const closedByDayGroup = {}; // day -> { group -> count }
+    const groupTotals = {};
+    for (const day of days) closedByDayGroup[day] = {};
     for (const row of closedWeekSample.Data || []) {
-      if (!row.CreatedDate || !row.CloseDateTime) continue;
+      if (!row.CloseDateTime) continue;
       const day = row.CloseDateTime.slice(0, 10);
-      if (!(day in closedByDay)) continue;
-      const ms = new Date(row.CloseDateTime) - new Date(row.CreatedDate);
-      if (!Number.isFinite(ms) || ms <= 0) continue;
-      closedByDay[day].count += 1;
-      closedByDay[day].totalMs += ms;
+      if (!(day in closedByDayGroup)) continue;
+      const g = row.AgentGroup || 'Unassigned';
+      closedByDayGroup[day][g] = (closedByDayGroup[day][g] || 0) + 1;
+      groupTotals[g] = (groupTotals[g] || 0) + 1;
     }
-    const closedLastWeek = Object.entries(closedByDay)
-      .sort((a, b) => b[0].localeCompare(a[0]))
-      .map(([day, v]) => ({
-        day,
-        count: v.count,
-        avgHours: v.count ? v.totalMs / v.count / 3_600_000 : null,
-      }));
+    const closedLastWeek = {
+      days: days.slice().reverse(), // newest first
+      groups: Object.entries(groupTotals).sort((a, b) => b[1] - a[1]).map(([g]) => g),
+      counts: closedByDayGroup,
+    };
 
     res.json({
       total,

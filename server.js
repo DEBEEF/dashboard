@@ -139,11 +139,11 @@ app.get('/api/overview', async (_req, res) => {
     const { ids: closedIds } = await getClosedStatusIds();
     const closedFilter = closedIds.length ? {
       logic: 'or',
-      filters: closedIds.map(id => ({ field: 'BaseEntityStatus.Id', operator: 'eq', value: id })),
+      filters: closedIds.map(id => ({ field: 'BaseEntityStatus', operator: 'eq', value: id })),
     } : null;
     const openFilter = closedIds.length ? {
       logic: 'and',
-      filters: closedIds.map(id => ({ field: 'BaseEntityStatus.Id', operator: 'neq', value: id })),
+      filters: closedIds.map(id => ({ field: 'BaseEntityStatus', operator: 'neq', value: id })),
     } : null;
 
     const [total, closed, open, last30, statusSample, trendSample] = await Promise.all([

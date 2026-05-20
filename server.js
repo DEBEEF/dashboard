@@ -29,7 +29,7 @@ async function login() {
   const url = nspUrl('api/logon/getauthenticationtoken');
   url.searchParams.set('email', NSP_EMAIL);
   url.searchParams.set('password', NSP_PASSWORD);
-  const res = await fetch(url, { method: 'POST' });
+  const res = await fetch(url, { method: 'GET' });
   const text = await res.text();
   let data;
   try { data = JSON.parse(text); } catch { data = { raw: text }; }

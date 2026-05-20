@@ -6,11 +6,12 @@ const {
   NSP_BASE_URL,
   NSP_EMAIL,
   NSP_PASSWORD,
+  NSP_API_TOKEN,
   PORT = 3000,
 } = process.env;
 
-if (!NSP_BASE_URL || !NSP_EMAIL || !NSP_PASSWORD) {
-  console.warn('[nsp-proxy] NSP_BASE_URL / NSP_EMAIL / NSP_PASSWORD not fully set. Configure .env before making requests.');
+if (!NSP_BASE_URL || (!NSP_API_TOKEN && (!NSP_EMAIL || !NSP_PASSWORD))) {
+  console.warn('[nsp-proxy] Set NSP_BASE_URL plus either NSP_API_TOKEN, or NSP_EMAIL + NSP_PASSWORD, in .env.');
 }
 
 function nspUrl(pathname) {
@@ -46,6 +47,7 @@ async function login() {
 }
 
 async function getToken() {
+  if (NSP_API_TOKEN) return NSP_API_TOKEN;
   if (cachedToken && cachedToken.expiresAt.getTime() - Date.now() > 60_000) {
     return cachedToken.token;
   }
@@ -161,7 +163,7 @@ app.get('/api/overview', async (_req, res) => {
 });
 
 app.get('/api/health', async (_req, res) => {
-  const configured = Boolean(NSP_BASE_URL && NSP_EMAIL && NSP_PASSWORD);
+  const configured = Boolean(NSP_BASE_URL && (NSP_API_TOKEN || (NSP_EMAIL && NSP_PASSWORD)));
   let tokenOk = false;
   let error = null;
   if (configured) {

@@ -107,12 +107,14 @@ async function getClosedStatusIds() {
   if (statusCache && statusCache.expiresAt > Date.now()) return statusCache;
   const data = await nspCall('api/publicapi/getentitylistbyquery', {
     entityType: 'SysEntityStatus',
-    columns: ['Id', 'Name'],
   });
   const all = data.Data || [];
   const lower = new Set(CLOSED_STATUS_NAMES.map(n => n.toLowerCase()));
-  const ids = all.filter(r => lower.has(String(r.Name || '').toLowerCase())).map(r => r.Id);
+  // SysEntityStatus name field varies between NSP installs - try common variants
+  const nameOf = r => r.StatusName ?? r.DisplayName ?? r.Title ?? r.Label ?? r.Name ?? r.NameKey ?? '';
+  const ids = all.filter(r => lower.has(String(nameOf(r)).toLowerCase())).map(r => r.Id);
   statusCache = { ids, all, expiresAt: Date.now() + 10 * 60_000 };
+  if (all[0]) console.log('[nsp-proxy] SysEntityStatus example row fields:', Object.keys(all[0]).join(', '));
   console.log('[nsp-proxy] closed status ids:', ids, '(of', all.length, 'total statuses)');
   return statusCache;
 }
@@ -193,6 +195,16 @@ app.get('/api/overview', async (_req, res) => {
       byStatus,
       trend,
     });
+  } catch (e) {
+    res.status(e.status || 502).json({ error: e.message, body: e.body ?? null });
+  }
+});
+
+app.get('/api/debug/statuses', async (_req, res) => {
+  try {
+    statusCache = null;
+    const cache = await getClosedStatusIds();
+    res.json({ closedIds: cache.ids, all: cache.all });
   } catch (e) {
     res.status(e.status || 502).json({ error: e.message, body: e.body ?? null });
   }

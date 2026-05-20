@@ -184,10 +184,33 @@ app.get('/api/overview', async (_req, res) => {
       }),
     ]);
 
+    // Known status IDs whose names NSP doesn't return on this install
+    const STATUS_ID_OVERRIDES = {
+      25: 'Waiting',
+      27: 'Awaiting decision',
+    };
+
+    // First pass: build id -> name map from rows where NSP did resolve the name
+    const idToName = { ...STATUS_ID_OVERRIDES };
+    for (const row of statusSample.Data || []) {
+      const id = row['BaseEntityStatus.Id'];
+      if (id != null && row.BaseEntityStatus && !idToName[id]) {
+        idToName[id] = row.BaseEntityStatus;
+      }
+    }
+
+    const labelFor = row => {
+      const id = row['BaseEntityStatus.Id'];
+      if (row.BaseEntityStatus) return row.BaseEntityStatus;
+      if (idToName[id]) return idToName[id];
+      if (id != null) return `Status #${id}`;
+      return 'Unknown';
+    };
+
     const byStatus = {};
     const byAgentGroup = {}; // { group: { statusName: count } } - excludes "Closed"
     for (const row of statusSample.Data || []) {
-      const s = row.BaseEntityStatus || 'Unknown';
+      const s = labelFor(row);
       byStatus[s] = (byStatus[s] || 0) + 1;
       if (s.toLowerCase() === 'closed') continue;
       const g = row.AgentGroup || 'Unassigned';

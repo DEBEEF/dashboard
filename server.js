@@ -184,13 +184,17 @@ app.get('/api/overview', async (_req, res) => {
       }),
     ]);
 
+    const closedIdSet = new Set(closedIds);
     const byStatus = {};
     const byAgentGroup = {};
     for (const row of statusSample.Data || []) {
       const s = row.BaseEntityStatus || 'Unknown';
       byStatus[s] = (byStatus[s] || 0) + 1;
       const g = row.AgentGroup || 'Unassigned';
-      byAgentGroup[g] = (byAgentGroup[g] || 0) + 1;
+      const bucket = byAgentGroup[g] || (byAgentGroup[g] = { open: 0, closed: 0, total: 0 });
+      const isClosed = closedIdSet.has(row['BaseEntityStatus.Id']);
+      if (isClosed) bucket.closed += 1; else bucket.open += 1;
+      bucket.total += 1;
     }
 
     const trend = {};

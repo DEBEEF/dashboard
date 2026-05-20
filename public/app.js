@@ -63,21 +63,39 @@ async function loadOverview() {
     dataLabels: { enabled: false },
   }).render();
 
-  const groupEntries = Object.entries(data.byAgentGroup || {}).sort((a, b) => b[1] - a[1]);
-  new ApexCharts(document.getElementById('chart-agentgroup'), {
-    chart: { type: 'bar', height: Math.max(260, 28 * groupEntries.length + 80), toolbar: { show: false } },
-    series: [{ name: 'Tickets', data: groupEntries.map(([, v]) => v) }],
-    xaxis: { categories: groupEntries.map(([k]) => k) },
-    plotOptions: { bar: { horizontal: true, borderRadius: 4, dataLabels: { position: 'top' } } },
-    dataLabels: {
-      enabled: true,
-      offsetX: 30,
-      style: { colors: ['#444'] },
-      formatter: v => v.toLocaleString(),
-    },
-    colors: ['#206bc4'],
-    grid: { strokeDashArray: 4 },
-  }).render();
+  renderAgentGroups(data.byAgentGroup || {});
+}
+
+function renderAgentGroups(groups) {
+  const entries = Object.entries(groups).sort((a, b) => b[1].total - a[1].total);
+  const max = entries.reduce((m, [, v]) => Math.max(m, v.total), 0) || 1;
+
+  const container = document.getElementById('agentgroup-list');
+  container.innerHTML = entries.map(([name, v]) => {
+    const widthPct = (v.total / max) * 100;
+    const openPct = v.total ? (v.open / v.total) * 100 : 0;
+    const closedPct = v.total ? (v.closed / v.total) * 100 : 0;
+    return `
+      <div class="mb-3">
+        <div class="d-flex align-items-baseline mb-1">
+          <strong class="me-2">${escapeHtml(name)}</strong>
+          <span class="text-muted small">${v.total.toLocaleString()} tickets</span>
+          <span class="ms-auto small">
+            <span class="text-green me-3">Open ${v.open.toLocaleString()}</span>
+            <span class="text-blue">Closed ${v.closed.toLocaleString()}</span>
+          </span>
+        </div>
+        <div class="progress" style="height: 12px; width: ${widthPct}%; min-width: 4px;">
+          <div class="progress-bar bg-green" style="width: ${openPct}%" title="Open ${v.open}"></div>
+          <div class="progress-bar bg-blue" style="width: ${closedPct}%" title="Closed ${v.closed}"></div>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
 loadHealth();

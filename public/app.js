@@ -63,22 +63,32 @@ async function loadOverview() {
     dataLabels: { enabled: false },
   }).render();
 
-  const groupEntries = Object.entries(data.byAgentGroup || {})
-    .map(([name, v]) => [name, v.open || 0])
-    .filter(([, open]) => open > 0)
-    .sort((a, b) => b[1] - a[1]);
+  // Per-group breakdown by status (open statuses only). Build a stacked bar:
+  // one series per status, categories = groups (sorted by total open desc).
+  const groups = Object.entries(data.byAgentGroup || {})
+    .map(([name, statusCounts]) => ({
+      name,
+      statusCounts,
+      total: Object.values(statusCounts).reduce((s, v) => s + v, 0),
+    }))
+    .filter(g => g.total > 0)
+    .sort((a, b) => b.total - a.total);
+
+  const statusNames = [...new Set(groups.flatMap(g => Object.keys(g.statusCounts)))];
+  const palette = ['#2fb344', '#206bc4', '#f59f00', '#ae3ec9', '#d63939', '#4299e1', '#74b816', '#fab005'];
+  const series = statusNames.map((s, i) => ({
+    name: s,
+    data: groups.map(g => g.statusCounts[s] || 0),
+  }));
+
   new ApexCharts(document.getElementById('chart-agentgroup'), {
-    chart: { type: 'bar', height: Math.max(260, 28 * groupEntries.length + 80), toolbar: { show: false } },
-    series: [{ name: 'Open tickets', data: groupEntries.map(([, v]) => v) }],
-    xaxis: { categories: groupEntries.map(([k]) => k) },
-    plotOptions: { bar: { horizontal: true, borderRadius: 4, dataLabels: { position: 'top' } } },
-    dataLabels: {
-      enabled: true,
-      offsetX: 30,
-      style: { colors: ['#444'] },
-      formatter: v => v.toLocaleString(),
-    },
-    colors: ['#2fb344'],
+    chart: { type: 'bar', stacked: true, height: Math.max(260, 32 * groups.length + 80), toolbar: { show: false } },
+    series,
+    colors: statusNames.map((_, i) => palette[i % palette.length]),
+    xaxis: { categories: groups.map(g => g.name) },
+    plotOptions: { bar: { horizontal: true, borderRadius: 2 } },
+    dataLabels: { enabled: false },
+    legend: { position: 'top' },
     grid: { strokeDashArray: 4 },
   }).render();
 }

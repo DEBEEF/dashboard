@@ -210,13 +210,16 @@ app.get('/api/overview', async (_req, res) => {
       return 'Unknown';
     };
 
+    // Statuses to hide from charts entirely (treated as "done")
+    const HIDDEN_STATUS_NAMES = new Set(['closed', 'resolved']);
+
     const byStatus = {};
     const byAgentGroup = {}; // { group: { statusName: count } } - excludes closed statuses
     for (const row of statusSample.Data || []) {
       const s = labelFor(row);
-      byStatus[s] = (byStatus[s] || 0) + 1;
       const id = row['BaseEntityStatus.Id'];
-      if (s.toLowerCase() === 'closed' || CLOSED_STATUS_IDS.has(id)) continue;
+      if (HIDDEN_STATUS_NAMES.has(s.toLowerCase()) || CLOSED_STATUS_IDS.has(id)) continue;
+      byStatus[s] = (byStatus[s] || 0) + 1;
       const g = row.AgentGroup || 'Unassigned';
       const bucket = byAgentGroup[g] || (byAgentGroup[g] = {});
       bucket[s] = (bucket[s] || 0) + 1;

@@ -1,6 +1,7 @@
 require('dotenv').config();
 const express = require('express');
 const path = require('path');
+const crypto = require('crypto');
 
 const {
   NSP_BASE_URL,
@@ -19,16 +20,35 @@ function nspUrl(pathname) {
   return new URL(pathname.replace(/^\//, ''), base);
 }
 
-let cachedToken = null; // { token, expiresAt: Date }
-let inflightLogin = null;
+// A "credentials context" bundles one set of NSP creds with its token cache
+// and per-context status-id cache. The .env defaults live in `defaultCtx`;
+// each logged-in browser session gets its own context.
+function makeContext({ email, password, staticToken, label }) {
+  return {
+    label: label || email || 'token',
+    email,
+    password,
+    staticToken: staticToken || null,
+    cachedToken: null,
+    inflightLogin: null,
+    statusCache: null,
+  };
+}
 
-async function login() {
-  if (!NSP_BASE_URL || !NSP_EMAIL || !NSP_PASSWORD) {
+const defaultCtx = makeContext({
+  email: NSP_EMAIL,
+  password: NSP_PASSWORD,
+  staticToken: NSP_API_TOKEN,
+  label: 'env-default',
+});
+
+async function login(ctx) {
+  if (!NSP_BASE_URL || !ctx.email || !ctx.password) {
     throw new Error('NSP credentials not configured');
   }
   const url = nspUrl('api/logon/getauthenticationtoken');
-  url.searchParams.set('email', NSP_EMAIL);
-  url.searchParams.set('password', NSP_PASSWORD);
+  url.searchParams.set('email', ctx.email);
+  url.searchParams.set('password', ctx.password);
   const res = await fetch(url, { method: 'GET' });
   const text = await res.text();
   let data;
@@ -39,27 +59,27 @@ async function login() {
     err.body = data;
     throw err;
   }
-  cachedToken = {
+  ctx.cachedToken = {
     token: data.Result.Token,
     expiresAt: data.Result.Expires ? new Date(data.Result.Expires) : new Date(Date.now() + 10 * 60 * 1000),
   };
-  return cachedToken;
+  return ctx.cachedToken;
 }
 
-async function getToken() {
-  if (NSP_API_TOKEN) return NSP_API_TOKEN;
-  if (cachedToken && cachedToken.expiresAt.getTime() - Date.now() > 60_000) {
-    return cachedToken.token;
+async function getToken(ctx) {
+  if (ctx.staticToken) return ctx.staticToken;
+  if (ctx.cachedToken && ctx.cachedToken.expiresAt.getTime() - Date.now() > 60_000) {
+    return ctx.cachedToken.token;
   }
-  if (!inflightLogin) {
-    inflightLogin = login().finally(() => { inflightLogin = null; });
+  if (!ctx.inflightLogin) {
+    ctx.inflightLogin = login(ctx).finally(() => { ctx.inflightLogin = null; });
   }
-  const t = await inflightLogin;
+  const t = await ctx.inflightLogin;
   return t.token;
 }
 
-async function nspCall(pathname, body, { retry = true } = {}) {
-  const token = await getToken();
+async function nspCall(ctx, pathname, body, { retry = true } = {}) {
+  const token = await getToken(ctx);
   const res = await fetch(nspUrl(pathname), {
     method: 'POST',
     headers: {
@@ -73,8 +93,8 @@ async function nspCall(pathname, body, { retry = true } = {}) {
   let data;
   try { data = text ? JSON.parse(text) : null; } catch { data = { raw: text }; }
   if (res.status === 401 && retry) {
-    cachedToken = null;
-    return nspCall(pathname, body, { retry: false });
+    ctx.cachedToken = null;
+    return nspCall(ctx, pathname, body, { retry: false });
   }
   if (!res.ok) {
     const err = new Error(`NSP ${res.status} ${res.statusText}`);
@@ -85,15 +105,84 @@ async function nspCall(pathname, body, { retry = true } = {}) {
   return data;
 }
 
+// --- session store (in-memory) -----------------------------------------------
+// sessionId -> { ctx, createdAt, lastSeen }
+const sessions = new Map();
+const SESSION_TTL_MS = 8 * 60 * 60 * 1000; // 8h idle
+
+function parseCookies(header) {
+  const out = {};
+  if (!header) return out;
+  for (const part of header.split(';')) {
+    const [k, ...rest] = part.trim().split('=');
+    if (!k) continue;
+    out[k] = decodeURIComponent(rest.join('='));
+  }
+  return out;
+}
+
+function reapSessions() {
+  const now = Date.now();
+  for (const [id, s] of sessions) {
+    if (now - s.lastSeen > SESSION_TTL_MS) sessions.delete(id);
+  }
+}
+
+function sessionMiddleware(req, res, next) {
+  reapSessions();
+  const cookies = parseCookies(req.headers.cookie);
+  const sid = cookies.nsp_session;
+  if (sid && sessions.has(sid)) {
+    const s = sessions.get(sid);
+    s.lastSeen = Date.now();
+    req.sessionId = sid;
+    req.ctx = s.ctx;
+  } else {
+    req.ctx = defaultCtx;
+  }
+  next();
+}
+
 const app = express();
 app.use(express.json({ limit: '1mb' }));
+app.use(sessionMiddleware);
 app.use(express.static(path.join(__dirname, 'public')));
+
+app.post('/api/login', async (req, res) => {
+  const { email, password } = req.body || {};
+  if (!email || !password) {
+    return res.status(400).json({ error: 'email and password required' });
+  }
+  const ctx = makeContext({ email, password, label: email });
+  try {
+    await login(ctx);
+  } catch (e) {
+    return res.status(401).json({ error: e.message, body: e.body ?? null });
+  }
+  const sid = crypto.randomBytes(32).toString('hex');
+  sessions.set(sid, { ctx, createdAt: Date.now(), lastSeen: Date.now() });
+  const secure = req.secure || req.headers['x-forwarded-proto'] === 'https';
+  res.setHeader('Set-Cookie',
+    `nsp_session=${sid}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${SESSION_TTL_MS / 1000}${secure ? '; Secure' : ''}`);
+  res.json({ ok: true, email });
+});
+
+app.post('/api/logout', (req, res) => {
+  if (req.sessionId) sessions.delete(req.sessionId);
+  res.setHeader('Set-Cookie', 'nsp_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0');
+  res.json({ ok: true });
+});
+
+app.get('/api/me', (req, res) => {
+  if (req.ctx === defaultCtx) return res.json({ loggedIn: false });
+  res.json({ loggedIn: true, email: req.ctx.email });
+});
 
 // Generic passthrough: POST /api/nsp/<anything> -> <NSP_BASE_URL>/api/<anything>
 app.post('/api/nsp/*', async (req, res) => {
   const sub = req.params[0];
   try {
-    const data = await nspCall(`api/${sub}`, req.body);
+    const data = await nspCall(req.ctx, `api/${sub}`, req.body);
     res.json(data);
   } catch (e) {
     res.status(e.status || 502).json({ error: e.message, body: e.body ?? null });
@@ -102,12 +191,9 @@ app.post('/api/nsp/*', async (req, res) => {
 
 const CLOSED_STATUS_NAMES = ['Closed', 'Resolved', 'Cancelled', 'Canceled', 'Released', 'Rejected', 'Completed', 'Done'];
 
-let statusCache = null; // { ids, nameById, expiresAt }
-async function getClosedStatusIds() {
-  if (statusCache && statusCache.expiresAt > Date.now()) return statusCache;
-  // Sample tickets to learn the name<->id mapping; each row carries both
-  // BaseEntityStatus (name) and BaseEntityStatus.Id (int).
-  const data = await nspCall('api/publicapi/getentitylistbyquery', {
+async function getClosedStatusIds(ctx) {
+  if (ctx.statusCache && ctx.statusCache.expiresAt > Date.now()) return ctx.statusCache;
+  const data = await nspCall(ctx, 'api/publicapi/getentitylistbyquery', {
     entityType: 'SysTicket',
     page: 1,
     pageSize: 5000,
@@ -123,18 +209,16 @@ async function getClosedStatusIds() {
   const ids = [...nameById.entries()]
     .filter(([, name]) => lower.has(String(name).toLowerCase()))
     .map(([id]) => id);
-  statusCache = {
+  ctx.statusCache = {
     ids,
     nameById: Object.fromEntries(nameById),
     expiresAt: Date.now() + 10 * 60_000,
   };
-  console.log('[nsp-proxy] discovered statuses:', Object.fromEntries(nameById));
-  console.log('[nsp-proxy] closed status ids:', ids);
-  return statusCache;
+  return ctx.statusCache;
 }
 
-async function countWhere(filters) {
-  const data = await nspCall('api/publicapi/getentitylistbyquery', {
+async function countWhere(ctx, filters) {
+  const data = await nspCall(ctx, 'api/publicapi/getentitylistbyquery', {
     entityType: 'SysTicket',
     page: 1,
     pageSize: 1,
@@ -144,13 +228,14 @@ async function countWhere(filters) {
   return data.Total ?? 0;
 }
 
-app.get('/api/overview', async (_req, res) => {
+app.get('/api/overview', async (req, res) => {
+  const ctx = req.ctx;
   try {
     const since = new Date();
     since.setDate(since.getDate() - 29);
     const sinceIso = since.toISOString().slice(0, 10) + 'T00:00:00Z';
 
-    const { ids: closedIds } = await getClosedStatusIds();
+    const { ids: closedIds } = await getClosedStatusIds(ctx);
     const closedFilter = closedIds.length ? {
       logic: 'or',
       filters: closedIds.map(id => ({ field: 'BaseEntityStatus', operator: 'eq', value: id })),
@@ -175,20 +260,18 @@ app.get('/api/overview', async (_req, res) => {
       : null;
 
     const [total, closed, open, last30, statusSample, trendSample, closedSample, closedWeekSample] = await Promise.all([
-      countWhere(null),
-      closedFilter ? countWhere(closedFilter) : Promise.resolve(0),
-      openFilter ? countWhere(openFilter) : Promise.resolve(0),
-      countWhere({ field: 'CreatedDate', operator: 'gte', value: sinceIso }),
-      // Larger sample purely for the status + agent-group breakdown
-      nspCall('api/publicapi/getentitylistbyquery', {
+      countWhere(ctx, null),
+      closedFilter ? countWhere(ctx, closedFilter) : Promise.resolve(0),
+      openFilter ? countWhere(ctx, openFilter) : Promise.resolve(0),
+      countWhere(ctx, { field: 'CreatedDate', operator: 'gte', value: sinceIso }),
+      nspCall(ctx, 'api/publicapi/getentitylistbyquery', {
         entityType: 'SysTicket',
         page: 1,
         pageSize: 5000,
         columns: ['BaseEntityStatus', 'AgentGroup'],
         sorts: [{ field: 'CreatedDate', dir: 'desc' }],
       }),
-      // Trend: last 30 days of CreatedDate
-      nspCall('api/publicapi/getentitylistbyquery', {
+      nspCall(ctx, 'api/publicapi/getentitylistbyquery', {
         entityType: 'SysTicket',
         page: 1,
         pageSize: 10000,
@@ -196,8 +279,7 @@ app.get('/api/overview', async (_req, res) => {
         sorts: [{ field: 'CreatedDate', dir: 'asc' }],
         filters: { field: 'CreatedDate', operator: 'gte', value: sinceIso },
       }),
-      // Recent closed tickets to compute average close time per group
-      closedSampleFilter ? nspCall('api/publicapi/getentitylistbyquery', {
+      closedSampleFilter ? nspCall(ctx, 'api/publicapi/getentitylistbyquery', {
         entityType: 'SysTicket',
         page: 1,
         pageSize: 5000,
@@ -205,8 +287,7 @@ app.get('/api/overview', async (_req, res) => {
         sorts: [{ field: 'CloseDateTime', dir: 'desc' }],
         filters: closedSampleFilter,
       }) : Promise.resolve({ Data: [] }),
-      // Closed in the last 7 days for the per-day breakdown
-      closedLastWeekFilter ? nspCall('api/publicapi/getentitylistbyquery', {
+      closedLastWeekFilter ? nspCall(ctx, 'api/publicapi/getentitylistbyquery', {
         entityType: 'SysTicket',
         page: 1,
         pageSize: 10000,
@@ -216,16 +297,13 @@ app.get('/api/overview', async (_req, res) => {
       }) : Promise.resolve({ Data: [] }),
     ]);
 
-    // Known status IDs whose names NSP doesn't return on this install
     const STATUS_ID_OVERRIDES = {
       25: 'Waiting',
       26: 'Reopened',
       27: 'Awaiting decision',
     };
-    // Status IDs to treat as "Closed" even if NSP names them differently
     const CLOSED_STATUS_IDS = new Set([29]);
 
-    // First pass: build id -> name map from rows where NSP did resolve the name
     const idToName = { ...STATUS_ID_OVERRIDES };
     for (const row of statusSample.Data || []) {
       const id = row['BaseEntityStatus.Id'];
@@ -242,11 +320,10 @@ app.get('/api/overview', async (_req, res) => {
       return 'Unknown';
     };
 
-    // Statuses to hide from charts entirely (treated as "done")
     const HIDDEN_STATUS_NAMES = new Set(['closed', 'resolved']);
 
     const byStatus = {};
-    const byAgentGroup = {}; // { group: { statusName: count } } - excludes closed statuses
+    const byAgentGroup = {};
     for (const row of statusSample.Data || []) {
       const s = labelFor(row);
       const id = row['BaseEntityStatus.Id'];
@@ -268,8 +345,7 @@ app.get('/api/overview', async (_req, res) => {
       if (day in trend) trend[day] += 1;
     }
 
-    // Average close time per agent group (in hours), from the last N closed tickets.
-    const closeAggregate = {}; // group -> { totalMs, count }
+    const closeAggregate = {};
     for (const row of closedSample.Data || []) {
       if (!row.CreatedDate || !row.CloseDateTime) continue;
       const ms = new Date(row.CloseDateTime) - new Date(row.CreatedDate);
@@ -283,14 +359,13 @@ app.get('/api/overview', async (_req, res) => {
       Object.entries(closeAggregate).map(([g, v]) => [g, v.totalMs / v.count / 3_600_000])
     );
 
-    // Per-day, per-group breakdown of tickets closed in the last 7 days
     const days = [];
     for (let i = 0; i < 7; i++) {
       const d = new Date(weekAgo);
       d.setDate(weekAgo.getDate() + i);
       days.push(d.toISOString().slice(0, 10));
     }
-    const closedByDayGroup = {}; // day -> { group -> count }
+    const closedByDayGroup = {};
     const groupTotals = {};
     for (const day of days) closedByDayGroup[day] = {};
     for (const row of closedWeekSample.Data || []) {
@@ -302,7 +377,7 @@ app.get('/api/overview', async (_req, res) => {
       groupTotals[g] = (groupTotals[g] || 0) + 1;
     }
     const closedLastWeek = {
-      days: days.slice().reverse(), // newest first
+      days: days.slice().reverse(),
       groups: Object.entries(groupTotals).sort((a, b) => b[1] - a[1]).map(([g]) => g),
       counts: closedByDayGroup,
     };
@@ -323,14 +398,11 @@ app.get('/api/overview', async (_req, res) => {
   }
 });
 
-// View raw tickets for a given BaseEntityStatus.Id:
-//   GET /api/debug/by-status/26       -> first 5 tickets with that status id
-//   GET /api/debug/by-status/26?limit=20
 app.get('/api/debug/by-status/:id', async (req, res) => {
   const id = Number(req.params.id);
   const limit = Math.min(Number(req.query.limit) || 5, 100);
   try {
-    const data = await nspCall('api/publicapi/getentitylistbyquery', {
+    const data = await nspCall(req.ctx, 'api/publicapi/getentitylistbyquery', {
       entityType: 'SysTicket',
       page: 1,
       pageSize: limit,
@@ -343,9 +415,9 @@ app.get('/api/debug/by-status/:id', async (req, res) => {
   }
 });
 
-app.get('/api/debug/unknown', async (_req, res) => {
+app.get('/api/debug/unknown', async (req, res) => {
   try {
-    const data = await nspCall('api/publicapi/getentitylistbyquery', {
+    const data = await nspCall(req.ctx, 'api/publicapi/getentitylistbyquery', {
       entityType: 'SysTicket',
       page: 1,
       pageSize: 5000,
@@ -359,24 +431,31 @@ app.get('/api/debug/unknown', async (_req, res) => {
   }
 });
 
-app.get('/api/debug/statuses', async (_req, res) => {
+app.get('/api/debug/statuses', async (req, res) => {
   try {
-    statusCache = null;
-    const cache = await getClosedStatusIds();
+    req.ctx.statusCache = null;
+    const cache = await getClosedStatusIds(req.ctx);
     res.json({ closedIds: cache.ids, nameById: cache.nameById });
   } catch (e) {
     res.status(e.status || 502).json({ error: e.message, body: e.body ?? null });
   }
 });
 
-app.get('/api/health', async (_req, res) => {
-  const configured = Boolean(NSP_BASE_URL && (NSP_API_TOKEN || (NSP_EMAIL && NSP_PASSWORD)));
+app.get('/api/health', async (req, res) => {
+  const ctx = req.ctx;
+  const configured = Boolean(NSP_BASE_URL && (ctx.staticToken || (ctx.email && ctx.password)));
   let tokenOk = false;
   let error = null;
   if (configured) {
-    try { await getToken(); tokenOk = true; } catch (e) { error = e.message; }
+    try { await getToken(ctx); tokenOk = true; } catch (e) { error = e.message; }
   }
-  res.json({ ok: true, nspConfigured: configured, tokenOk, error });
+  res.json({
+    ok: true,
+    nspConfigured: configured,
+    tokenOk,
+    error,
+    user: ctx === defaultCtx ? null : ctx.email,
+  });
 });
 
 app.listen(PORT, () => {

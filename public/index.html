@@ -17,8 +17,11 @@
       <h1 class="navbar-brand navbar-brand-autodark d-none-navbar-horizontal pe-0 pe-md-3">
         NSP Overview
       </h1>
-      <div class="navbar-nav flex-row order-md-last">
+      <div class="navbar-nav flex-row order-md-last align-items-center gap-2">
         <span id="health" class="badge bg-secondary-lt align-self-center">checking…</span>
+        <span id="user-label" class="text-muted small d-none"></span>
+        <button id="btn-login" class="btn btn-sm btn-outline-primary d-none" data-bs-toggle="modal" data-bs-target="#login-modal">Log in</button>
+        <button id="btn-logout" class="btn btn-sm btn-outline-secondary d-none">Log out</button>
       </div>
     </div>
   </header>
@@ -115,6 +118,36 @@
         </div>
       </div>
     </footer>
+  </div>
+</div>
+
+<!-- Login modal. Standard form so the browser offers to save the credentials. -->
+<div class="modal modal-blur fade" id="login-modal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-sm modal-dialog-centered">
+    <div class="modal-content">
+      <form id="login-form" autocomplete="on" method="post" action="/api/login">
+        <div class="modal-header">
+          <h5 class="modal-title">Log in with your NSP account</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label">Username</label>
+            <input type="text" name="email" class="form-control" placeholder="vastervik\xN" autocomplete="username" required />
+            <div class="form-hint">Use the same account name you use to log into NSP.</div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Password</label>
+            <input type="password" name="password" class="form-control" autocomplete="current-password" required />
+          </div>
+          <div id="login-error" class="alert alert-danger d-none mb-0"></div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-link link-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-primary ms-auto">Log in</button>
+        </div>
+      </form>
+    </div>
   </div>
 </div>
 

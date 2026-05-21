@@ -138,5 +138,69 @@ function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
+async function loadUser() {
+  let me;
+  try { me = await fetch('/api/me').then(r => r.json()); } catch { return; }
+  const label = document.getElementById('user-label');
+  const btnLogin = document.getElementById('btn-login');
+  const btnLogout = document.getElementById('btn-logout');
+  if (me.loggedIn) {
+    label.textContent = me.email;
+    label.classList.remove('d-none');
+    btnLogout.classList.remove('d-none');
+    btnLogin.classList.add('d-none');
+  } else {
+    label.classList.add('d-none');
+    btnLogout.classList.add('d-none');
+    btnLogin.classList.remove('d-none');
+  }
+}
+
+document.getElementById('login-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const form = e.currentTarget;
+  const errBox = document.getElementById('login-error');
+  errBox.classList.add('d-none');
+  const fd = new FormData(form);
+  const body = JSON.stringify({ email: fd.get('email'), password: fd.get('password') });
+  let res, data;
+  try {
+    res = await fetch('/api/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body,
+    });
+    data = await res.json();
+  } catch (err) {
+    errBox.textContent = err.message;
+    errBox.classList.remove('d-none');
+    return;
+  }
+  if (!res.ok) {
+    errBox.textContent = data.error || 'Login failed';
+    errBox.classList.remove('d-none');
+    return;
+  }
+  // Ask the browser to offer saving the credentials. Without this, fetch+preventDefault
+  // doesn't reliably trigger Chrome's save-password prompt.
+  if (window.PasswordCredential) {
+    try {
+      const cred = new window.PasswordCredential({
+        id: fd.get('email'),
+        password: fd.get('password'),
+        name: fd.get('email'),
+      });
+      await navigator.credentials.store(cred);
+    } catch { /* user dismissed or unsupported */ }
+  }
+  window.location.reload();
+});
+
+document.getElementById('btn-logout').addEventListener('click', async () => {
+  await fetch('/api/logout', { method: 'POST' });
+  window.location.reload();
+});
+
+loadUser();
 loadHealth();
 loadOverview();

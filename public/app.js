@@ -127,13 +127,14 @@ function renderClosedWeek({ days, groups, counts }) {
 }
 
 function renderReadyToClose(rows) {
-  const badge = document.getElementById('ready-count');
-  badge.textContent = `${rows.length} ticket${rows.length === 1 ? '' : 's'}`;
-  const tbody = document.getElementById('ready-to-close');
+  const card = document.getElementById('ready-to-close-card');
   if (!rows.length) {
-    tbody.innerHTML = `<tr><td colspan="3" class="text-center text-muted py-3">None — nothing waiting to be closed.</td></tr>`;
+    card.classList.add('d-none');
     return;
   }
+  card.classList.remove('d-none');
+  document.getElementById('ready-count').textContent = `${rows.length} ticket${rows.length === 1 ? '' : 's'}`;
+  const tbody = document.getElementById('ready-to-close');
   const now = Date.now();
   tbody.innerHTML = rows.map(r => {
     const ageMs = r.created ? now - new Date(r.created).getTime() : null;

@@ -206,8 +206,10 @@ async function getClosedStatusIds(ctx) {
     if (id != null && name) nameById.set(id, name);
   }
   const lower = new Set(CLOSED_STATUS_NAMES.map(n => n.toLowerCase()));
+  // id 29 is "Ready to close" on this install — still an open ticket, exclude.
+  const FORCE_OPEN_IDS = new Set([29]);
   const ids = [...nameById.entries()]
-    .filter(([, name]) => lower.has(String(name).toLowerCase()))
+    .filter(([id, name]) => lower.has(String(name).toLowerCase()) && !FORCE_OPEN_IDS.has(id))
     .map(([id]) => id);
   ctx.statusCache = {
     ids,
@@ -245,10 +247,9 @@ app.get('/api/overview', async (req, res) => {
       filters: closedIds.map(id => ({ field: 'BaseEntityStatus', operator: 'neq', value: id })),
     } : null;
 
-    const allClosedIds = [...new Set([...closedIds, 29])];
-    const closedSampleFilter = allClosedIds.length ? {
+    const closedSampleFilter = closedIds.length ? {
       logic: 'or',
-      filters: allClosedIds.map(id => ({ field: 'BaseEntityStatus', operator: 'eq', value: id })),
+      filters: closedIds.map(id => ({ field: 'BaseEntityStatus', operator: 'eq', value: id })),
     } : null;
 
     const weekAgo = new Date();
@@ -301,8 +302,9 @@ app.get('/api/overview', async (req, res) => {
       25: 'Waiting',
       26: 'Reopened',
       27: 'Awaiting decision',
+      29: 'Ready to close',
     };
-    const CLOSED_STATUS_IDS = new Set([29]);
+    const CLOSED_STATUS_IDS = new Set();
 
     const idToName = { ...STATUS_ID_OVERRIDES };
     for (const row of statusSample.Data || []) {
@@ -314,6 +316,7 @@ app.get('/api/overview', async (req, res) => {
 
     const labelFor = row => {
       const id = row['BaseEntityStatus.Id'];
+      if (STATUS_ID_OVERRIDES[id]) return STATUS_ID_OVERRIDES[id];
       if (row.BaseEntityStatus) return row.BaseEntityStatus;
       if (idToName[id]) return idToName[id];
       if (id != null) return `Status #${id}`;

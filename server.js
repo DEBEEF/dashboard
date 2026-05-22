@@ -178,17 +178,6 @@ app.get('/api/me', (req, res) => {
   res.json({ loggedIn: true, email: req.ctx.email });
 });
 
-// Generic passthrough: POST /api/nsp/<anything> -> <NSP_BASE_URL>/api/<anything>
-app.post('/api/nsp/*', async (req, res) => {
-  const sub = req.params[0];
-  try {
-    const data = await nspCall(req.ctx, `api/${sub}`, req.body);
-    res.json(data);
-  } catch (e) {
-    res.status(e.status || 502).json({ error: e.message, body: e.body ?? null });
-  }
-});
-
 const CLOSED_STATUS_NAMES = ['Closed', 'Resolved', 'Cancelled', 'Canceled', 'Released', 'Rejected', 'Completed', 'Done'];
 
 async function getClosedStatusIds(ctx) {

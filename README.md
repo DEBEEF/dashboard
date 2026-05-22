@@ -17,11 +17,14 @@ Open http://localhost:3000.
 ## How it works
 
 - `server.js` - Express app. Serves `public/` and exposes:
-  - `POST /api/nsp/*` - generic passthrough, forwards body to `<NSP_BASE_URL>/api/*`
-    and injects the auth header.
   - `GET /api/overview` - aggregates totals / status breakdown / 30-day trend
-    by calling `api/publicapi/getentitylistbyquery` on `SysTicket`.
+    by calling `api/publicapi/getentitylistbyquery` on `SysTicket`. All NSP
+    queries are constructed server-side; the client cannot influence
+    entityType, columns, filters, or page size.
   - `GET /api/health` - reports whether the proxy is configured.
+  - `POST /api/login`, `POST /api/logout`, `GET /api/me` - optional per-user
+    NSP login. Anonymous visitors use the `.env` credentials.
+  - `GET /api/debug/*` - localhost-only inspection helpers.
 - `public/` - Tabler (CDN) + ApexCharts. No build step.
 
 ## Auth

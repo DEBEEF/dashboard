@@ -92,6 +92,24 @@
           <div class="col-12">
             <div class="card">
               <div class="card-header">
+                <h3 class="card-title">Recommended action: close these tickets</h3>
+                <span id="ready-count" class="badge bg-yellow-lt ms-2"></span>
+                <div class="text-muted small ms-auto">Status: Ready to close</div>
+              </div>
+              <div class="card-body">
+                <div class="table-responsive" style="max-height: 360px;">
+                  <table class="table table-vcenter table-sm card-table">
+                    <thead><tr><th>Reference</th><th>Agent group</th><th class="text-end">Age</th></tr></thead>
+                    <tbody id="ready-to-close"></tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="col-12">
+            <div class="card">
+              <div class="card-header">
                 <h3 class="card-title">Tickets per agent group, by status (excl. Closed)</h3>
                 <div class="text-muted small ms-auto">last 5,000 tickets</div>
               </div>

@@ -260,7 +260,7 @@ app.get('/api/overview', async (req, res) => {
       ? { logic: 'and', filters: [closedSampleFilter, { field: 'CloseDateTime', operator: 'gte', value: weekAgoIso }] }
       : null;
 
-    const [total, closed, open, last30, statusSample, trendSample, closedSample, closedWeekSample] = await Promise.all([
+    const [total, closed, open, last30, statusSample, trendSample, closedSample, closedWeekSample, readyToCloseSample] = await Promise.all([
       countWhere(ctx, null),
       closedFilter ? countWhere(ctx, closedFilter) : Promise.resolve(0),
       openFilter ? countWhere(ctx, openFilter) : Promise.resolve(0),
@@ -296,6 +296,15 @@ app.get('/api/overview', async (req, res) => {
         sorts: [{ field: 'CloseDateTime', dir: 'desc' }],
         filters: closedLastWeekFilter,
       }) : Promise.resolve({ Data: [] }),
+      // Tickets in "Ready to close" (id 29) - shown as a recommended-action list.
+      nspCall(ctx, 'api/publicapi/getentitylistbyquery', {
+        entityType: 'SysTicket',
+        page: 1,
+        pageSize: 1000,
+        columns: ['ReferenceNo', 'AgentGroup', 'CreatedDate'],
+        sorts: [{ field: 'CreatedDate', dir: 'desc' }],
+        filters: { field: 'BaseEntityStatus', operator: 'eq', value: 29 },
+      }),
     ]);
 
     const STATUS_ID_OVERRIDES = {
@@ -385,6 +394,12 @@ app.get('/api/overview', async (req, res) => {
       counts: closedByDayGroup,
     };
 
+    const readyToClose = (readyToCloseSample.Data || []).map(row => ({
+      ref: row.ReferenceNo,
+      group: row.AgentGroup || 'Unassigned',
+      created: row.CreatedDate,
+    }));
+
     res.json({
       total,
       open,
@@ -394,6 +409,7 @@ app.get('/api/overview', async (req, res) => {
       byAgentGroup,
       avgCloseHoursByGroup,
       closedLastWeek,
+      readyToClose,
       trend,
     });
   } catch (e) {

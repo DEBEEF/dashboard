@@ -93,6 +93,7 @@ async function loadOverview() {
   }).render();
 
   renderClosedWeek(data.closedLastWeek || { days: [], groups: [], counts: {} });
+  renderReadyToClose(data.readyToClose || []);
 
   const tbody = document.getElementById('agentgroup-stats');
   const avg = data.avgCloseHoursByGroup || {};
@@ -123,6 +124,28 @@ function renderClosedWeek({ days, groups, counts }) {
     `;
   }).join('');
   document.getElementById('closed-week-table').innerHTML = header + `<tbody>${rows}</tbody>`;
+}
+
+function renderReadyToClose(rows) {
+  const badge = document.getElementById('ready-count');
+  badge.textContent = `${rows.length} ticket${rows.length === 1 ? '' : 's'}`;
+  const tbody = document.getElementById('ready-to-close');
+  if (!rows.length) {
+    tbody.innerHTML = `<tr><td colspan="3" class="text-center text-muted py-3">None — nothing waiting to be closed.</td></tr>`;
+    return;
+  }
+  const now = Date.now();
+  tbody.innerHTML = rows.map(r => {
+    const ageMs = r.created ? now - new Date(r.created).getTime() : null;
+    const ageH = ageMs != null && Number.isFinite(ageMs) ? ageMs / 3_600_000 : null;
+    return `
+      <tr>
+        <td><span class="fw-bold">${escapeHtml(r.ref || '—')}</span></td>
+        <td>${escapeHtml(r.group)}</td>
+        <td class="text-end text-muted">${formatHours(ageH)}</td>
+      </tr>
+    `;
+  }).join('');
 }
 
 function formatHours(h) {

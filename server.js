@@ -417,7 +417,13 @@ app.get('/api/overview', async (req, res) => {
   }
 });
 
-app.get('/api/debug/by-status/:id', async (req, res) => {
+function localOnly(req, res, next) {
+  const ip = req.socket.remoteAddress || '';
+  if (ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1') return next();
+  res.status(403).json({ error: 'debug endpoints are localhost-only' });
+}
+
+app.get('/api/debug/by-status/:id', localOnly, async (req, res) => {
   const id = Number(req.params.id);
   const limit = Math.min(Number(req.query.limit) || 5, 100);
   try {
@@ -434,7 +440,7 @@ app.get('/api/debug/by-status/:id', async (req, res) => {
   }
 });
 
-app.get('/api/debug/unknown', async (req, res) => {
+app.get('/api/debug/unknown', localOnly, async (req, res) => {
   try {
     const data = await nspCall(req.ctx, 'api/publicapi/getentitylistbyquery', {
       entityType: 'SysTicket',
@@ -450,7 +456,7 @@ app.get('/api/debug/unknown', async (req, res) => {
   }
 });
 
-app.get('/api/debug/statuses', async (req, res) => {
+app.get('/api/debug/statuses', localOnly, async (req, res) => {
   try {
     req.ctx.statusCache = null;
     const cache = await getClosedStatusIds(req.ctx);

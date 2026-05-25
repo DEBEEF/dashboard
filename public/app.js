@@ -1,26 +1,61 @@
+const LOCALE = 'sv-SE';
+
+const STATUS_SV = {
+  Waiting: 'Väntar',
+  Reopened: 'Återöppnad',
+  'Awaiting decision': 'Väntar på beslut',
+  'Ready to close': 'Redo att stängas',
+  Closed: 'Stängd',
+  Resolved: 'Löst',
+  Cancelled: 'Avbruten',
+  Canceled: 'Avbruten',
+  Released: 'Frisläppt',
+  Rejected: 'Avvisad',
+  Completed: 'Slutförd',
+  Done: 'Klar',
+  Unknown: 'Okänd',
+  Unassigned: 'Otilldelad',
+};
+
+const ERROR_SV = {
+  'email and password required': 'e-post och lösenord krävs',
+  'Login failed': 'Inloggning misslyckades',
+  'NSP credentials not configured': 'NSP-uppgifter är inte konfigurerade',
+};
+
+function trStatus(name) {
+  return STATUS_SV[name] || name;
+}
+
+function trError(msg) {
+  if (!msg) return msg;
+  return ERROR_SV[msg] || msg.replace(/^NSP login failed:/, 'NSP-inloggning misslyckades:')
+    .replace(/^Failed to load NSP data:/, 'Kunde inte ladda NSP-data:');
+}
+
 async function loadHealth() {
   const badge = document.getElementById('health');
   try {
     const r = await fetch('/api/health').then(r => r.json());
     if (!r.nspConfigured) {
       badge.className = 'badge bg-yellow-lt align-self-center';
-      badge.textContent = 'NSP not configured (.env)';
+      badge.textContent = 'NSP inte konfigurerad (.env)';
     } else if (r.tokenOk) {
       badge.className = 'badge bg-green-lt align-self-center';
-      badge.textContent = 'NSP connected';
+      badge.textContent = 'NSP ansluten';
     } else {
       badge.className = 'badge bg-red-lt align-self-center';
-      badge.textContent = 'auth failed';
+      badge.textContent = 'autentisering misslyckades';
     }
   } catch {
     badge.className = 'badge bg-red-lt align-self-center';
-    badge.textContent = 'proxy offline';
+    badge.textContent = 'proxy ej tillgänglig';
   }
 }
 
 function showError(msg) {
   const el = document.getElementById('error');
-  el.textContent = msg;
+  el.textContent = trError(msg);
   el.classList.remove('d-none');
 }
 
@@ -31,21 +66,21 @@ async function loadOverview() {
     data = await res.json();
     if (!res.ok) throw new Error(data.error || res.statusText);
   } catch (e) {
-    showError('Failed to load NSP data: ' + e.message);
+    showError('Kunde inte ladda NSP-data: ' + trError(e.message));
     return;
   }
 
-  document.getElementById('stat-total').textContent = (data.total ?? 0).toLocaleString();
-  document.getElementById('stat-open').textContent = (data.open ?? 0).toLocaleString();
-  document.getElementById('stat-closed').textContent = (data.closed ?? 0).toLocaleString();
-  document.getElementById('stat-recent').textContent = (data.last30Days ?? 0).toLocaleString();
+  document.getElementById('stat-total').textContent = (data.total ?? 0).toLocaleString(LOCALE);
+  document.getElementById('stat-open').textContent = (data.open ?? 0).toLocaleString(LOCALE);
+  document.getElementById('stat-closed').textContent = (data.closed ?? 0).toLocaleString(LOCALE);
+  document.getElementById('stat-recent').textContent = (data.last30Days ?? 0).toLocaleString(LOCALE);
 
   const trend = data.trend || {};
   const trendDays = Object.keys(trend).sort();
 
   new ApexCharts(document.getElementById('chart-trend'), {
     chart: { type: 'area', height: 260, toolbar: { show: false }, animations: { enabled: false } },
-    series: [{ name: 'Created', data: trendDays.map(d => trend[d]) }],
+    series: [{ name: 'Skapade', data: trendDays.map(d => trend[d]) }],
     xaxis: { categories: trendDays, labels: { rotate: -45, style: { fontSize: '10px' } } },
     stroke: { curve: 'smooth', width: 2 },
     fill: { type: 'gradient', gradient: { opacityFrom: 0.5, opacityTo: 0 } },
@@ -58,7 +93,7 @@ async function loadOverview() {
   new ApexCharts(document.getElementById('chart-status'), {
     chart: { type: 'donut', height: 260 },
     series: statusEntries.map(([, v]) => v),
-    labels: statusEntries.map(([k]) => k),
+    labels: statusEntries.map(([k]) => trStatus(k)),
     legend: { position: 'bottom' },
     dataLabels: { enabled: false },
   }).render();
@@ -76,8 +111,8 @@ async function loadOverview() {
 
   const statusNames = [...new Set(groups.flatMap(g => Object.keys(g.statusCounts)))];
   const palette = ['#2fb344', '#206bc4', '#f59f00', '#ae3ec9', '#d63939', '#4299e1', '#74b816', '#fab005'];
-  const series = statusNames.map((s, i) => ({
-    name: s,
+  const series = statusNames.map(s => ({
+    name: trStatus(s),
     data: groups.map(g => g.statusCounts[s] || 0),
   }));
 
@@ -100,7 +135,7 @@ async function loadOverview() {
   tbody.innerHTML = groups.map(g => `
     <tr>
       <td>${escapeHtml(g.name)}</td>
-      <td class="text-end">${g.total.toLocaleString()}</td>
+      <td class="text-end">${g.total.toLocaleString(LOCALE)}</td>
       <td class="text-end text-muted">${formatHours(avg[g.name])}</td>
     </tr>
   `).join('');
@@ -109,17 +144,17 @@ async function loadOverview() {
 function renderClosedWeek({ days, groups, counts }) {
   const todayStr = new Date().toISOString().slice(0, 10);
   const yesterdayStr = (() => { const d = new Date(); d.setDate(d.getDate() - 1); return d.toISOString().slice(0, 10); })();
-  const dayLabel = d => d === todayStr ? 'Today' : d === yesterdayStr ? 'Yesterday' : d;
+  const dayLabel = d => d === todayStr ? 'Idag' : d === yesterdayStr ? 'Igår' : d;
 
-  const header = `<thead><tr><th>Day</th>${groups.map(g => `<th class="text-end">${escapeHtml(g)}</th>`).join('')}<th class="text-end">Total</th></tr></thead>`;
+  const header = `<thead><tr><th>Dag</th>${groups.map(g => `<th class="text-end">${escapeHtml(g)}</th>`).join('')}<th class="text-end">Totalt</th></tr></thead>`;
   const rows = days.map(d => {
     const dayCounts = counts[d] || {};
     const total = groups.reduce((s, g) => s + (dayCounts[g] || 0), 0);
     return `
       <tr>
         <td>${dayLabel(d)}</td>
-        ${groups.map(g => `<td class="text-end ${dayCounts[g] ? '' : 'text-muted'}">${(dayCounts[g] || 0).toLocaleString()}</td>`).join('')}
-        <td class="text-end fw-bold">${total.toLocaleString()}</td>
+        ${groups.map(g => `<td class="text-end ${dayCounts[g] ? '' : 'text-muted'}">${(dayCounts[g] || 0).toLocaleString(LOCALE)}</td>`).join('')}
+        <td class="text-end fw-bold">${total.toLocaleString(LOCALE)}</td>
       </tr>
     `;
   }).join('');
@@ -133,7 +168,8 @@ function renderReadyToClose(rows) {
     return;
   }
   card.classList.remove('d-none');
-  document.getElementById('ready-count').textContent = `${rows.length} ticket${rows.length === 1 ? '' : 's'}`;
+  const word = rows.length === 1 ? 'ärende' : 'ärenden';
+  document.getElementById('ready-count').textContent = `${rows.length} ${word}`;
   const tbody = document.getElementById('ready-to-close');
   const now = Date.now();
   tbody.innerHTML = rows.map(r => {
@@ -151,11 +187,11 @@ function renderReadyToClose(rows) {
 
 function formatHours(h) {
   if (h == null || !Number.isFinite(h)) return '—';
-  if (h < 1) return `${Math.round(h * 60)}m`;
-  if (h < 48) return `${h.toFixed(1)}h`;
+  if (h < 1) return `${Math.round(h * 60)} min`;
+  if (h < 48) return `${h.toFixed(1).replace('.', ',')} tim`;
   const days = h / 24;
-  if (days < 60) return `${days.toFixed(1)}d`;
-  return `${(days / 30.44).toFixed(1)}mo`;
+  if (days < 60) return `${days.toFixed(1).replace('.', ',')} d`;
+  return `${(days / 30.44).toFixed(1).replace('.', ',')} mån`;
 }
 
 function escapeHtml(s) {
@@ -201,7 +237,7 @@ document.getElementById('login-form').addEventListener('submit', async e => {
     return;
   }
   if (!res.ok) {
-    errBox.textContent = data.error || 'Login failed';
+    errBox.textContent = trError(data.error) || 'Inloggning misslyckades';
     errBox.classList.remove('d-none');
     return;
   }

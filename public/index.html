@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="en">
+<html lang="sv">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>NSP Overview</title>
+  <title>NSP-översikt</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/core@1.0.0-beta20/dist/css/tabler.min.css" />
   <style>
     .chart-box { height: 260px; }
@@ -15,13 +15,13 @@
   <header class="navbar navbar-expand-md navbar-light d-print-none">
     <div class="container-xl">
       <h1 class="navbar-brand navbar-brand-autodark d-none-navbar-horizontal pe-0 pe-md-3">
-        NSP Overview
+        NSP-översikt
       </h1>
       <div class="navbar-nav flex-row order-md-last align-items-center gap-2">
-        <span id="health" class="badge bg-secondary-lt align-self-center">checking…</span>
+        <span id="health" class="badge bg-secondary-lt align-self-center">kontrollerar…</span>
         <span id="user-label" class="text-muted small d-none"></span>
-        <button id="btn-login" class="btn btn-sm btn-outline-primary d-none" data-bs-toggle="modal" data-bs-target="#login-modal">Log in</button>
-        <button id="btn-logout" class="btn btn-sm btn-outline-secondary d-none">Log out</button>
+        <button id="btn-login" class="btn btn-sm btn-outline-primary d-none" data-bs-toggle="modal" data-bs-target="#login-modal">Logga in</button>
+        <button id="btn-logout" class="btn btn-sm btn-outline-secondary d-none">Logga ut</button>
       </div>
     </div>
   </header>
@@ -35,7 +35,7 @@
           <div class="col-sm-6 col-lg-3">
             <div class="card">
               <div class="card-body">
-                <div class="subheader">Total tickets</div>
+                <div class="subheader">Ärenden totalt</div>
                 <div class="h1 mb-0" id="stat-total">—</div>
               </div>
             </div>
@@ -43,7 +43,7 @@
           <div class="col-sm-6 col-lg-3">
             <div class="card">
               <div class="card-body">
-                <div class="subheader">Open</div>
+                <div class="subheader">Öppna</div>
                 <div class="h1 mb-0 text-green" id="stat-open">—</div>
               </div>
             </div>
@@ -51,7 +51,7 @@
           <div class="col-sm-6 col-lg-3">
             <div class="card">
               <div class="card-body">
-                <div class="subheader">Closed</div>
+                <div class="subheader">Stängda</div>
                 <div class="h1 mb-0 text-muted" id="stat-closed">—</div>
               </div>
             </div>
@@ -59,7 +59,7 @@
           <div class="col-sm-6 col-lg-3">
             <div class="card">
               <div class="card-body">
-                <div class="subheader">Last 30 days</div>
+                <div class="subheader">Senaste 30 dagarna</div>
                 <div class="h1 mb-0 text-blue" id="stat-recent">—</div>
               </div>
             </div>
@@ -67,20 +67,20 @@
 
           <div class="col-lg-8">
             <div class="card">
-              <div class="card-header"><h3 class="card-title">Tickets created (last 30 days)</h3></div>
+              <div class="card-header"><h3 class="card-title">Skapade ärenden (senaste 30 dagarna)</h3></div>
               <div class="card-body"><div id="chart-trend" class="chart-box"></div></div>
             </div>
           </div>
           <div class="col-lg-4">
             <div class="card">
-              <div class="card-header"><h3 class="card-title">By status (active)</h3></div>
+              <div class="card-header"><h3 class="card-title">Per status (aktiva)</h3></div>
               <div class="card-body"><div id="chart-status" class="chart-box"></div></div>
             </div>
           </div>
 
           <div class="col-12">
             <div class="card">
-              <div class="card-header"><h3 class="card-title">Closed in the last 7 days, per group</h3></div>
+              <div class="card-header"><h3 class="card-title">Stängda senaste 7 dagarna, per grupp</h3></div>
               <div class="card-body">
                 <div class="table-responsive">
                   <table class="table table-vcenter table-sm card-table" id="closed-week-table"></table>
@@ -92,14 +92,14 @@
           <div class="col-12 d-none" id="ready-to-close-card">
             <div class="card">
               <div class="card-header">
-                <h3 class="card-title">Recommended action: close these tickets</h3>
+                <h3 class="card-title">Rekommenderad åtgärd: stäng dessa ärenden</h3>
                 <span id="ready-count" class="badge bg-yellow-lt ms-2"></span>
-                <div class="text-muted small ms-auto">Status: Ready to close</div>
+                <div class="text-muted small ms-auto">Status: Redo att stängas</div>
               </div>
               <div class="card-body">
                 <div class="table-responsive" style="max-height: 360px;">
                   <table class="table table-vcenter table-sm card-table">
-                    <thead><tr><th>Reference</th><th>Agent group</th><th class="text-end">Age</th></tr></thead>
+                    <thead><tr><th>Referens</th><th>Agentgrupp</th><th class="text-end">Ålder</th></tr></thead>
                     <tbody id="ready-to-close"></tbody>
                   </table>
                 </div>
@@ -110,14 +110,14 @@
           <div class="col-12">
             <div class="card">
               <div class="card-header">
-                <h3 class="card-title">Tickets per agent group, by status (excl. Closed)</h3>
-                <div class="text-muted small ms-auto">last 5,000 tickets</div>
+                <h3 class="card-title">Ärenden per agentgrupp, per status (exkl. Stängd)</h3>
+                <div class="text-muted small ms-auto">senaste 5 000 ärenden</div>
               </div>
               <div class="card-body">
                 <div id="chart-agentgroup"></div>
                 <div class="table-responsive mt-3">
                   <table class="table table-vcenter table-sm card-table">
-                    <thead><tr><th>Agent group</th><th class="text-end">Open tickets</th><th class="text-end">Avg close time</th></tr></thead>
+                    <thead><tr><th>Agentgrupp</th><th class="text-end">Öppna ärenden</th><th class="text-end">Genomsnittlig stängningstid</th></tr></thead>
                     <tbody id="agentgroup-stats"></tbody>
                   </table>
                 </div>
@@ -132,7 +132,7 @@
     <footer class="footer footer-transparent d-print-none">
       <div class="container-xl">
         <div class="row text-muted">
-          <div class="col-auto">Live NSP data via backend proxy. Token stays server-side.</div>
+          <div class="col-auto">Live NSP-data via backend-proxy. Token lagras på serversidan.</div>
         </div>
       </div>
     </footer>
@@ -145,24 +145,24 @@
     <div class="modal-content">
       <form id="login-form" autocomplete="on" method="post" action="/api/login">
         <div class="modal-header">
-          <h5 class="modal-title">Log in with your NSP account</h5>
-          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          <h5 class="modal-title">Logga in med ditt NSP-konto</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Stäng"></button>
         </div>
         <div class="modal-body">
           <div class="mb-3">
-            <label class="form-label">Username</label>
+            <label class="form-label">Användarnamn</label>
             <input type="text" name="email" class="form-control" placeholder="vastervik\xN" autocomplete="username" required />
-            <div class="form-hint">Use the same account name you use to log into NSP.</div>
+            <div class="form-hint">Använd samma kontonamn som när du loggar in i NSP.</div>
           </div>
           <div class="mb-3">
-            <label class="form-label">Password</label>
+            <label class="form-label">Lösenord</label>
             <input type="password" name="password" class="form-control" autocomplete="current-password" required />
           </div>
           <div id="login-error" class="alert alert-danger d-none mb-0"></div>
         </div>
         <div class="modal-footer">
-          <button type="button" class="btn btn-link link-secondary" data-bs-dismiss="modal">Cancel</button>
-          <button type="submit" class="btn btn-primary ms-auto">Log in</button>
+          <button type="button" class="btn btn-link link-secondary" data-bs-dismiss="modal">Avbryt</button>
+          <button type="submit" class="btn btn-primary ms-auto">Logga in</button>
         </div>
       </form>
     </div>

@@ -54,8 +54,8 @@ async function login(ctx) {
   let data;
   try { data = JSON.parse(text); } catch { data = { raw: text }; }
   if (!res.ok || !data?.Success || !data?.Result?.Token) {
-    const err = new Error(`NSP login failed: ${res.status} ${res.statusText}`);
-    err.status = res.status;
+    const err = new Error('invalid_credentials');
+    err.status = 401;
     err.body = data;
     throw err;
   }
@@ -157,7 +157,8 @@ app.post('/api/login', async (req, res) => {
   try {
     await login(ctx);
   } catch (e) {
-    return res.status(401).json({ error: e.message, body: e.body ?? null });
+    const code = e.message === 'invalid_credentials' ? 'invalid_credentials' : 'login_failed';
+    return res.status(e.status && e.status >= 400 ? e.status : 401).json({ error: code });
   }
   const sid = crypto.randomBytes(32).toString('hex');
   sessions.set(sid, { ctx, createdAt: Date.now(), lastSeen: Date.now() });

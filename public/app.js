@@ -231,13 +231,13 @@ document.getElementById('login-form').addEventListener('submit', async e => {
       body,
     });
     data = await res.json();
-  } catch (err) {
-    errBox.textContent = err.message;
+  } catch {
+    errBox.textContent = 'Fel';
     errBox.classList.remove('d-none');
     return;
   }
   if (!res.ok) {
-    errBox.textContent = trError(data.error) || 'Inloggning misslyckades';
+    errBox.textContent = 'Fel';
     errBox.classList.remove('d-none');
     return;
   }
